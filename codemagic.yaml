@@ -18,7 +18,6 @@ workflows:
           npm install
       - name: Fix react-native-camera variant conflict
         script: |
-          # Create a temporary file with the configuration
           cat > temp_config.txt << 'EOF'
 
           configurations.all {
@@ -32,7 +31,6 @@ workflows:
           }
           EOF
           
-          # Insert the configuration after the first line of build.gradle
           head -1 android/app/build.gradle > temp_build.gradle
           cat temp_config.txt >> temp_build.gradle
           tail -n +2 android/app/build.gradle >> temp_build.gradle
@@ -70,24 +68,3 @@ workflows:
           - shantu.hasko@ab-inbev.com
         notify:
           success: true
-```
-
-## **What This Does:**
-
-1. **Debugging Step:** Shows exactly where APK files are created
-2. **Multiple Artifact Paths:** Looks in all possible locations:
-   - `android/app/build/outputs/apk/mlkit/release/*.apk`
-   - `android/app/build/outputs/apk/**/release/*.apk` 
-   - `android/app/build/outputs/**/*.apk`
-
-## **Steps:**
-1. **Update codemagic.yaml** with the version above
-2. **Change your email address**
-3. **Commit changes**
-4. **Start new build**
-5. **Check build logs** - the "Find generated APK files" step will show exactly where the APK is
-
-This time you should see:
-```
-== Gathering artifacts ==
-✅ Found: app-mlkit-release.apk
