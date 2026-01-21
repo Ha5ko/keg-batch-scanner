@@ -1,30 +1,33 @@
 workflows:
-  android-build:
-    name: Android APK Build
+  react-native-android:
+    name: React Native Android
     max_build_duration: 60
-    instance_type: linux_x2
+    instance_type: mac_mini_m1
     environment:
-      vars:
-        PACKAGE_NAME: "com.kegbatchscanner"
-        JAVA_HOME: /usr/lib/jvm/java-11-openjdk-amd64
       node: 16
+      xcode: latest
     scripts:
       - name: Install dependencies
         script: |
           npm install
+      - name: Initialize React Native Android
+        script: |
+          npx react-native init KegScanner --template react-native@^0.72.0 --skip-install
+          cp -r KegScanner/android ./
+          cp package.json ./
+          npm install
       - name: Set up local.properties
         script: |
           echo "sdk.dir=$ANDROID_SDK_ROOT" > "$CM_BUILD_DIR/android/local.properties"
-      - name: Build APK
+      - name: Build Android APK
         script: |
           cd android
-          chmod +x gradlew
           ./gradlew assembleRelease
     artifacts:
-      - android/app/build/outputs/apk/release/*.apk
+      - android/app/build/outputs/**/*.apk
     publishing:
       email:
         recipients:
-          - your-email@domain.com
+          - shantu.hasko@ab-inbev.com
         notify:
           success: true
