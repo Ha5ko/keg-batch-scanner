@@ -11,7 +11,7 @@ workflows:
     scripts:
       - name: Install dependencies
         script: |
-          npm ci
+          npm install
       - name: Set up local.properties
         script: |
           echo "sdk.dir=$ANDROID_SDK_ROOT" > "$CM_BUILD_DIR/android/local.properties"
@@ -25,6 +25,6 @@ workflows:
     publishing:
       email:
         recipients:
-          - shantu.hasko@ab-inbev.com
+          - your-email@domain.com
         notify:
           success: true
