@@ -18,18 +18,26 @@ workflows:
           npm install
       - name: Fix react-native-camera variant conflict
         script: |
-          # Insert variant selection configuration into app/build.gradle
-          sed -i '/apply plugin: "com.android.application"/a\
-          \
-          configurations.all {\
-              resolutionStrategy {\
-                  eachDependency { details ->\
-                      if (details.requested.name == "react-native-camera") {\
-                          details.useTarget group: details.requested.group, name: details.requested.name, version: details.requested.version\
-                      }\
-                  }\
-              }\
-          }' android/app/build.gradle
+          # Create a temporary file with the configuration
+          cat > temp_config.txt << 'EOF'
+
+          configurations.all {
+              resolutionStrategy {
+                  eachDependency { details ->
+                      if (details.requested.name == "react-native-camera") {
+                          details.useTarget group: details.requested.group, name: details.requested.name, version: details.requested.version
+                      }
+                  }
+              }
+          }
+          EOF
+          
+          # Insert the configuration after the first line of build.gradle
+          head -1 android/app/build.gradle > temp_build.gradle
+          cat temp_config.txt >> temp_build.gradle
+          tail -n +2 android/app/build.gradle >> temp_build.gradle
+          mv temp_build.gradle android/app/build.gradle
+          rm temp_config.txt
       - name: Set up local.properties
         script: |
           echo "sdk.dir=$ANDROID_SDK_ROOT" > "$CM_BUILD_DIR/android/local.properties"
