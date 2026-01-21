@@ -49,7 +49,20 @@ workflows:
         script: |
           cd android
           ./gradlew assembleMlkitRelease
+      - name: Find generated APK files
+        script: |
+          echo "=== Looking for APK files ==="
+          find android/app/build/outputs -name "*.apk" -type f
+          echo "=== Directory structure ==="
+          ls -la android/app/build/outputs/
+          if [ -d "android/app/build/outputs/apk" ]; then
+            echo "=== APK directory contents ==="
+            find android/app/build/outputs/apk -type f
+          fi
     artifacts:
+      - android/app/build/outputs/apk/**/*.apk
+      - android/app/build/outputs/apk/**/release/*.apk
+      - android/app/build/outputs/apk/mlkit/release/*.apk
       - android/app/build/outputs/**/*.apk
     publishing:
       email:
@@ -57,3 +70,24 @@ workflows:
           - shantu.hasko@ab-inbev.com
         notify:
           success: true
+```
+
+## **What This Does:**
+
+1. **Debugging Step:** Shows exactly where APK files are created
+2. **Multiple Artifact Paths:** Looks in all possible locations:
+   - `android/app/build/outputs/apk/mlkit/release/*.apk`
+   - `android/app/build/outputs/apk/**/release/*.apk` 
+   - `android/app/build/outputs/**/*.apk`
+
+## **Steps:**
+1. **Update codemagic.yaml** with the version above
+2. **Change your email address**
+3. **Commit changes**
+4. **Start new build**
+5. **Check build logs** - the "Find generated APK files" step will show exactly where the APK is
+
+This time you should see:
+```
+== Gathering artifacts ==
+✅ Found: app-mlkit-release.apk
