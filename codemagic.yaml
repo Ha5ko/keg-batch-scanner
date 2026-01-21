@@ -16,13 +16,31 @@ workflows:
           cp -r KegScanner/android ./
           cp package.json ./
           npm install
+      - name: Fix react-native-camera variant conflict
+        script: |
+          # Insert variant selection configuration into app/build.gradle
+          sed -i '/apply plugin: "com.android.application"/a\
+          \
+          configurations.all {\
+              resolutionStrategy {\
+                  eachDependency { details ->\
+                      if (details.requested.name == "react-native-camera") {\
+                          details.useTarget group: details.requested.group, name: details.requested.name, version: details.requested.version\
+                      }\
+                  }\
+              }\
+          }' android/app/build.gradle
       - name: Set up local.properties
         script: |
           echo "sdk.dir=$ANDROID_SDK_ROOT" > "$CM_BUILD_DIR/android/local.properties"
-      - name: Build Android APK
+      - name: List available tasks
         script: |
           cd android
-          ./gradlew assembleRelease
+          ./gradlew tasks --all | grep -i assemble
+      - name: Build Android APK with MLKit variant
+        script: |
+          cd android
+          ./gradlew assembleMlkitRelease
     artifacts:
       - android/app/build/outputs/**/*.apk
     publishing:
