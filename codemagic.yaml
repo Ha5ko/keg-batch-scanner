@@ -25,6 +25,6 @@ workflows:
     publishing:
       email:
         recipients:
-          - your-email@domain.com
+          - shantu.hasko@ab-inbev.com
         notify:
           success: true
