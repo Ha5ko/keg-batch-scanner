@@ -12,11 +12,11 @@ import {
   BackHandler,
 } from 'react-native';
 import { RNCamera } from 'react-native-camera';
-import TextRecognition from 'react-native-text-recognition';
+import TextRecognition from '@react-native-ml-kit/text-recognition';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 
 // IMPORTANT: Replace this with YOUR Google Apps Script Web App URL
-const GOOGLE_SHEETS_WEBHOOK_URL = 'https://script.google.com/macros/s/AKfycby87KX7t0nmio433zyB7H0fl2-7-zhZ3GFY6q9yp7b9zGp41rglrgolg4RMN156yrcUnA/exec';
+const GOOGLE_SHEETS_WEBHOOK_URL = 'https://script.google.com/macros/s/YOUR_SCRIPT_ID_HERE/exec';
 
 const { width, height } = Dimensions.get('window');
 
@@ -119,11 +119,11 @@ const App = () => {
         const options = { quality: 0.8, base64: false, fixOrientation: true };
         const data = await cameraRef.current.takePictureAsync(options);
         
-        // Perform OCR on the captured image
+        // Perform OCR on the captured image using ML Kit
         const result = await TextRecognition.recognize(data.uri);
-        console.log('OCR Result:', result);
+        console.log('OCR Result:', result.text);
         
-        const lCode = extractLCode(result);
+        const lCode = extractLCode(result.text);
         
         if (lCode) {
           const timestamp = new Date().toISOString();
