@@ -1,81 +1,27 @@
 workflows:
-  android-build:
-    name: Android APK Build
-    max_build_duration: 60
+  expo-android:
+    name: Expo Android Build
+    max_build_duration: 30
     instance_type: mac_mini_m1
     environment:
       node: 16
-      xcode: latest
+      npm: 8
     scripts:
-      - name: Create React Native project with correct structure
+      - name: Install Expo CLI
         script: |
-          # Create a proper React Native project
-          npx react-native@0.72.10 init KegBatchScanner --version 0.72.10
-          
-          # Copy our custom files into the project
-          cp package.json KegBatchScanner/
-          cp App.js KegBatchScanner/
-          cp index.js KegBatchScanner/
-          cp app.json KegBatchScanner/
-          cp metro.config.js KegBatchScanner/
-          cp babel.config.js KegBatchScanner/
-          
-          # Move into the project directory
-          cd KegBatchScanner
-          
-          # Install our dependencies
+          npm install -g @expo/cli@latest
+          npm install -g eas-cli@latest
+      - name: Install project dependencies
+        script: |
           npm install
-      - name: Set up Android SDK and prepare build
+      - name: Build APK with Expo
         script: |
-          cd KegBatchScanner
-          
-          # Set up local.properties
-          echo "sdk.dir=$ANDROID_SDK_ROOT" > android/local.properties
-          
-          # List what modules exist
-          echo "=== Available gradle projects ==="
-          cd android && ./gradlew projects
-          
-          # List available tasks for the main app
-          echo "=== Available tasks for :app module ==="
-          ./gradlew :app:tasks --all | grep -i assemble
-      - name: Build the main app APK
-        script: |
-          cd KegBatchScanner/android
-          
-          # Build the main app (not just libraries)
-          echo "=== Building main app APK ==="
-          
-          if ./gradlew :app:assembleRelease --stacktrace --info; then
-            echo "✅ Main app release build successful"
-          elif ./gradlew assembleRelease --stacktrace --info; then
-            echo "✅ Standard release build successful"
-          else
-            echo "❌ Main app build failed"
-            echo "=== Available app tasks ==="
-            ./gradlew :app:tasks | grep assemble
-            exit 1
-          fi
-      - name: Find and verify APK
-        script: |
-          cd KegBatchScanner
-          echo "=== Searching for APK files everywhere ==="
-          find . -name "*.apk" -type f -exec ls -lh {} \;
-          
-          echo "=== Main app build directory ==="
-          if [ -d "android/app/build/outputs/apk" ]; then
-            echo "Found APK output directory!"
-            find android/app/build/outputs/apk -name "*.apk" -exec ls -lh {} \;
-          else
-            echo "No APK output directory found. Checking build structure:"
-            ls -la android/app/build/ 2>/dev/null || echo "No app build directory"
-            
-            # Check if any build happened
-            echo "=== Checking if any builds occurred ==="
-            find android -name "build" -type d
-          fi
+          npx expo install --fix
+          npx expo export --platform android
+          npx expo run:android --variant release
     artifacts:
-      - KegBatchScanner/android/app/build/outputs/**/*.apk
+      - "*.apk"
+      - android/app/build/outputs/**/*.apk
     publishing:
       email:
         recipients:
