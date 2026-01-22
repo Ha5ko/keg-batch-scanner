@@ -7,87 +7,72 @@ workflows:
       node: 16
       xcode: latest
     scripts:
-      - name: Install dependencies
+      - name: Create React Native project with correct structure
         script: |
-          npm install
-      - name: Initialize React Native Android
-        script: |
-          npx react-native init KegScanner --template react-native@^0.72.0 --skip-install
-          cp -r KegScanner/android ./
-          cp package.json ./
-          npm install
-      - name: Fix react-native-camera variant conflict
-        script: |
-          cat > temp_config.txt << 'EOF'
-
-          configurations.all {
-              resolutionStrategy {
-                  eachDependency { details ->
-                      if (details.requested.name == "react-native-camera") {
-                          details.useTarget group: details.requested.group, name: details.requested.name, version: details.requested.version
-                      }
-                  }
-              }
-          }
-          EOF
+          # Create a proper React Native project
+          npx react-native@0.72.10 init KegBatchScanner --version 0.72.10
           
-          head -1 android/app/build.gradle > temp_build.gradle
-          cat temp_config.txt >> temp_build.gradle
-          tail -n +2 android/app/build.gradle >> temp_build.gradle
-          mv temp_build.gradle android/app/build.gradle
-          rm temp_config.txt
-      - name: Set up local.properties
+          # Copy our custom files into the project
+          cp package.json KegBatchScanner/
+          cp App.js KegBatchScanner/
+          cp index.js KegBatchScanner/
+          cp app.json KegBatchScanner/
+          cp metro.config.js KegBatchScanner/
+          cp babel.config.js KegBatchScanner/
+          
+          # Move into the project directory
+          cd KegBatchScanner
+          
+          # Install our dependencies
+          npm install
+      - name: Set up Android SDK and build
         script: |
-          echo "sdk.dir=$ANDROID_SDK_ROOT" > "$CM_BUILD_DIR/android/local.properties"
-      - name: List available gradle tasks
+          cd KegBatchScanner
+          
+          # Set up local.properties
+          echo "sdk.dir=$ANDROID_SDK_ROOT" > android/local.properties
+          
+          # List what build variants are actually available
+          echo "=== Available build tasks ==="
+          cd android && ./gradlew tasks --all | grep -i assemble
+          
+          # Check if react-native-camera has variants
+          echo "=== Checking react-native-camera variants ==="
+          ./gradlew :react-native-camera:tasks | grep -i assemble || true
+      - name: Build the APK
         script: |
-          cd android
-          echo "=== Available assemble tasks ==="
-          ./gradlew tasks --all | grep -i assemble
-          echo "=== Available build variants ==="
-          ./gradlew tasks | grep -E "(assemble|build)"
-      - name: Try building Android APK
-        script: |
-          cd android
-          echo "=== Attempting MLKit Release build ==="
-          if ./gradlew assembleMlkitRelease --stacktrace; then
-            echo "✅ MLKit Release build successful"
+          cd KegBatchScanner/android
+          
+          # Try different build approaches
+          echo "=== Building APK ==="
+          
+          if ./gradlew assembleRelease --stacktrace --info; then
+            echo "✅ Standard release build successful"
+          elif ./gradlew assembleMlkitRelease --stacktrace --info; then
+            echo "✅ MLKit release build successful"  
+          elif ./gradlew assembleGeneralRelease --stacktrace --info; then
+            echo "✅ General release build successful"
           else
-            echo "❌ MLKit Release build failed, trying alternatives..."
-            
-            echo "=== Attempting General Release build ==="
-            if ./gradlew assembleGeneralRelease --stacktrace; then
-              echo "✅ General Release build successful"
-            else
-              echo "❌ General Release build failed, trying standard release..."
-              
-              echo "=== Attempting standard Release build ==="
-              if ./gradlew assembleRelease --stacktrace; then
-                echo "✅ Standard Release build successful"
-              else
-                echo "❌ All build attempts failed"
-                exit 1
-              fi
-            fi
+            echo "❌ All build variants failed"
+            echo "=== Available variants ==="
+            ./gradlew tasks | grep assemble
+            exit 1
           fi
-      - name: Find generated APK files
+      - name: Find and verify APK
         script: |
-          echo "=== Looking for APK files ==="
+          cd KegBatchScanner
+          echo "=== Searching for APK files ==="
+          find . -name "*.apk" -type f -exec ls -lh {} \;
+          
+          echo "=== Build output directory structure ==="
           if [ -d "android/app/build/outputs" ]; then
-            find android/app/build/outputs -name "*.apk" -type f -exec ls -lh {} \;
-            echo "=== Directory structure ==="
-            find android/app/build/outputs -type d
+            find android/app/build/outputs -type f -name "*.apk"
           else
-            echo "❌ Build outputs directory doesn't exist - build may have failed"
-            echo "=== Checking if android directory exists ==="
-            ls -la android/app/
-            if [ -d "android/app/build" ]; then
-              echo "=== Contents of build directory ==="
-              find android/app/build -name "*.apk" -o -name "*outputs*" -type d
-            fi
+            echo "No outputs directory found"
+            ls -la android/app/build/ || echo "No build directory"
           fi
     artifacts:
-      - android/app/build/outputs/**/*.apk
+      - KegBatchScanner/android/app/build/outputs/**/*.apk
     publishing:
       email:
         recipients:
