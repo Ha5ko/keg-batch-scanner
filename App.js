@@ -1,17 +1,16 @@
-// App.js - Keg Batch Scanner with Google Sheets Integration
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useRef } from 'react';
 import {
   View,
   Text,
   TouchableOpacity,
-  Alert,
   StyleSheet,
   Dimensions,
   StatusBar,
   ActivityIndicator,
-  BackHandler,
+  Alert,
 } from 'react-native';
-import { RNCamera } from 'react-native-camera';
+import { CameraView, useCameraPermissions } from 'expo-camera';
+import * as MediaLibrary from 'expo-media-library';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 
 // IMPORTANT: Replace this with YOUR Google Apps Script Web App URL
@@ -19,39 +18,12 @@ const GOOGLE_SHEETS_WEBHOOK_URL = 'https://script.google.com/macros/s/AKfycby87K
 
 const { width, height } = Dimensions.get('window');
 
-const App = () => {
+export default function App() {
   const [isProcessing, setIsProcessing] = useState(false);
   const [lastResult, setLastResult] = useState(null);
   const [offlineQueue, setOfflineQueue] = useState([]);
-  const [canDetectText, setCanDetectText] = useState(true);
+  const [permission, requestPermission] = useCameraPermissions();
   const cameraRef = useRef(null);
-
-  useEffect(() => {
-    loadOfflineQueue();
-    const backHandler = BackHandler.addEventListener('hardwareBackPress', () => true);
-    return () => backHandler.remove();
-  }, []);
-
-  const loadOfflineQueue = async () => {
-    try {
-      const queue = await AsyncStorage.getItem('offlineQueue');
-      if (queue) {
-        setOfflineQueue(JSON.parse(queue));
-      }
-    } catch (error) {
-      console.log('Error loading offline queue:', error);
-    }
-  };
-
-  const saveOfflineData = async (data) => {
-    try {
-      const currentQueue = [...offlineQueue, data];
-      await AsyncStorage.setItem('offlineQueue', JSON.stringify(currentQueue));
-      setOfflineQueue(currentQueue);
-    } catch (error) {
-      console.log('Error saving offline data:', error);
-    }
-  };
 
   const extractLCode = (text) => {
     // Pattern for L-codes: L + 5 digits + 1-2 letters + optional time
@@ -60,7 +32,6 @@ const App = () => {
     const matches = text.match(lCodePattern);
     
     if (matches && matches.length > 0) {
-      // Return the first match, cleaned up
       return matches[0].trim();
     }
     return null;
@@ -90,102 +61,83 @@ const App = () => {
     }
   };
 
-  const syncOfflineData = async () => {
-    if (offlineQueue.length === 0) return;
-    
+  const saveOfflineData = async (data) => {
     try {
-      for (const data of offlineQueue) {
-        const success = await uploadToGoogleSheets(data);
-        if (!success) {
-          break; // Stop if upload fails
-        }
+      const currentQueue = [...offlineQueue, data];
+      await AsyncStorage.setItem('offlineQueue', JSON.stringify(currentQueue));
+      setOfflineQueue(currentQueue);
+    } catch (error) {
+      console.log('Error saving offline data:', error);
+    }
+  };
+
+  const performOCR = async (imageUri) => {
+    try {
+      // Using Expo's built-in text recognition
+      // This is much more reliable than react-native-camera
+      const { TextDetector } = await import('expo-camera');
+      const result = await TextDetector.detectFromImageAsync(imageUri);
+      
+      let allText = '';
+      if (result && result.textBlocks) {
+        allText = result.textBlocks.map(block => block.text).join(' ');
       }
       
-      // Clear queue on successful sync
-      await AsyncStorage.removeItem('offlineQueue');
-      setOfflineQueue([]);
-      
+      return allText;
     } catch (error) {
-      console.log('Sync error:', error);
+      console.log('OCR Error:', error);
+      return '';
     }
   };
 
-  // This function is called automatically when text is detected by the camera
-  const onTextRecognized = (textBlocks) => {
-    if (isProcessing) return; // Avoid processing multiple detections at once
-    
-    // Extract all text from textBlocks
-    let allText = '';
-    if (textBlocks && textBlocks.textBlocks) {
-      allText = textBlocks.textBlocks.map(block => block.value).join(' ');
-    }
-    
-    console.log('OCR Result:', allText);
-    
-    const lCode = extractLCode(allText);
-    
-    if (lCode && lCode !== lastResult?.lCode) {
-      setIsProcessing(true);
-      
-      const timestamp = new Date().toISOString();
-      const batchData = { lCode, timestamp };
-      
-      // Try to upload immediately
-      uploadToGoogleSheets(batchData).then(uploadSuccess => {
-        if (!uploadSuccess) {
-          // Save offline if upload fails
-          saveOfflineData(batchData);
-        }
-        
-        setLastResult({
-          success: true,
-          message: `L-Code found: ${lCode}`,
-          lCode: lCode
-        });
-        
-        // Auto-sync any offline data
-        setTimeout(() => syncOfflineData(), 1000);
-        
-        // Reset processing after 3 seconds to allow new detections
-        setTimeout(() => {
-          setIsProcessing(false);
-          setLastResult(null);
-        }, 3000);
-      });
-    }
-  };
-
-  const manualCapture = async () => {
+  const takePicture = async () => {
     if (cameraRef.current && !isProcessing) {
       setIsProcessing(true);
       setLastResult(null);
       
       try {
-        const options = { quality: 0.8, base64: false, fixOrientation: true };
-        const data = await cameraRef.current.takePictureAsync(options);
-        
-        setLastResult({
-          success: false,
-          message: 'Photo captured - checking for L-codes...',
+        const photo = await cameraRef.current.takePictureAsync({
+          quality: 0.8,
+          base64: false,
         });
         
-        // The onTextRecognized will handle the actual OCR processing
-        setTimeout(() => {
-          if (isProcessing) {
-            setLastResult({
-              success: false,
-              message: 'No L-Code detected in photo.',
-            });
-            setIsProcessing(false);
+        // Perform OCR on the captured image
+        const detectedText = await performOCR(photo.uri);
+        console.log('OCR Result:', detectedText);
+        
+        const lCode = extractLCode(detectedText);
+        
+        if (lCode) {
+          const timestamp = new Date().toISOString();
+          const batchData = { lCode, timestamp };
+          
+          // Try to upload immediately
+          const uploadSuccess = await uploadToGoogleSheets(batchData);
+          
+          if (!uploadSuccess) {
+            await saveOfflineData(batchData);
           }
-        }, 2000);
+          
+          setLastResult({
+            success: true,
+            message: `L-Code found: ${lCode}`,
+            lCode: lCode
+          });
+          
+        } else {
+          setLastResult({
+            success: false,
+            message: 'No L-Code detected. Please try again.',
+          });
+        }
         
       } catch (error) {
         console.log('Camera error:', error);
         setLastResult({
           success: false,
-          message: 'Error taking photo. Please try again.',
+          message: 'Error processing image. Please try again.',
         });
+      } finally {
         setIsProcessing(false);
       }
     }
@@ -204,30 +156,29 @@ const App = () => {
     );
   };
 
+  if (!permission) {
+    return <View />;
+  }
+
+  if (!permission.granted) {
+    return (
+      <View style={styles.container}>
+        <Text style={styles.message}>We need your permission to show the camera</Text>
+        <TouchableOpacity style={styles.button} onPress={requestPermission}>
+          <Text style={styles.buttonText}>Grant Permission</Text>
+        </TouchableOpacity>
+      </View>
+    );
+  }
+
   return (
     <View style={styles.container}>
-      <StatusBar barStyle="light-content" backgroundColor="#000000" />
-      
-      <RNCamera
-        ref={cameraRef}
-        style={styles.camera}
-        type={RNCamera.Constants.Type.back}
-        flashMode={RNCamera.Constants.FlashMode.auto}
-        androidCameraPermissionOptions={{
-          title: 'Permission to use camera',
-          message: 'We need your permission to use your camera',
-          buttonPositive: 'Ok',
-          buttonNegative: 'Cancel',
-        }}
-        onTextRecognized={canDetectText ? onTextRecognized : null}
-      >
+      <StatusBar barStyle="light-content" />
+      <CameraView ref={cameraRef} style={styles.camera} facing="back">
         <View style={styles.overlay}>
           <Text style={styles.title}>Keg Batch Scanner</Text>
           <Text style={styles.instruction}>
             Point camera at L-code on keg label
-          </Text>
-          <Text style={styles.subInstruction}>
-            Automatic detection enabled
           </Text>
           
           {/* Viewfinder frame */}
@@ -243,13 +194,13 @@ const App = () => {
           <View style={styles.buttonContainer}>
             <TouchableOpacity
               style={[styles.captureButton, isProcessing && styles.captureButtonDisabled]}
-              onPress={manualCapture}
+              onPress={takePicture}
               disabled={isProcessing}
             >
               {isProcessing ? (
                 <ActivityIndicator size="large" color="#FFFFFF" />
               ) : (
-                <Text style={styles.captureButtonText}>CAPTURE</Text>
+                <Text style={styles.captureButtonText}>SCAN</Text>
               )}
             </TouchableOpacity>
           </View>
@@ -262,10 +213,10 @@ const App = () => {
             </View>
           )}
         </View>
-      </RNCamera>
+      </CameraView>
     </View>
   );
-};
+}
 
 const styles = StyleSheet.create({
   container: {
@@ -274,7 +225,6 @@ const styles = StyleSheet.create({
   },
   camera: {
     flex: 1,
-    justifyContent: 'space-between',
   },
   overlay: {
     flex: 1,
@@ -297,12 +247,23 @@ const styles = StyleSheet.create({
     marginTop: 10,
     paddingHorizontal: 20,
   },
-  subInstruction: {
-    fontSize: 14,
-    color: '#CCCCCC',
+  message: {
     textAlign: 'center',
-    marginTop: 5,
-    fontStyle: 'italic',
+    paddingBottom: 10,
+    color: '#FFFFFF',
+    fontSize: 18,
+  },
+  button: {
+    backgroundColor: '#007AFF',
+    paddingHorizontal: 30,
+    paddingVertical: 15,
+    borderRadius: 8,
+    alignSelf: 'center',
+  },
+  buttonText: {
+    color: '#FFFFFF',
+    fontSize: 16,
+    fontWeight: 'bold',
   },
   viewfinder: {
     width: width * 0.8,
@@ -398,5 +359,3 @@ const styles = StyleSheet.create({
     textAlign: 'center',
   },
 });
-
-export default App;
