@@ -25,51 +25,54 @@ workflows:
           
           # Install our dependencies
           npm install
-      - name: Set up Android SDK and build
+      - name: Set up Android SDK and prepare build
         script: |
           cd KegBatchScanner
           
           # Set up local.properties
           echo "sdk.dir=$ANDROID_SDK_ROOT" > android/local.properties
           
-          # List what build variants are actually available
-          echo "=== Available build tasks ==="
-          cd android && ./gradlew tasks --all | grep -i assemble
+          # List what modules exist
+          echo "=== Available gradle projects ==="
+          cd android && ./gradlew projects
           
-          # Check if react-native-camera has variants
-          echo "=== Checking react-native-camera variants ==="
-          ./gradlew :react-native-camera:tasks | grep -i assemble || true
-      - name: Build the APK
+          # List available tasks for the main app
+          echo "=== Available tasks for :app module ==="
+          ./gradlew :app:tasks --all | grep -i assemble
+      - name: Build the main app APK
         script: |
           cd KegBatchScanner/android
           
-          # Try different build approaches
-          echo "=== Building APK ==="
+          # Build the main app (not just libraries)
+          echo "=== Building main app APK ==="
           
-          if ./gradlew assembleRelease --stacktrace --info; then
+          if ./gradlew :app:assembleRelease --stacktrace --info; then
+            echo "✅ Main app release build successful"
+          elif ./gradlew assembleRelease --stacktrace --info; then
             echo "✅ Standard release build successful"
-          elif ./gradlew assembleMlkitRelease --stacktrace --info; then
-            echo "✅ MLKit release build successful"  
-          elif ./gradlew assembleGeneralRelease --stacktrace --info; then
-            echo "✅ General release build successful"
           else
-            echo "❌ All build variants failed"
-            echo "=== Available variants ==="
-            ./gradlew tasks | grep assemble
+            echo "❌ Main app build failed"
+            echo "=== Available app tasks ==="
+            ./gradlew :app:tasks | grep assemble
             exit 1
           fi
       - name: Find and verify APK
         script: |
           cd KegBatchScanner
-          echo "=== Searching for APK files ==="
+          echo "=== Searching for APK files everywhere ==="
           find . -name "*.apk" -type f -exec ls -lh {} \;
           
-          echo "=== Build output directory structure ==="
-          if [ -d "android/app/build/outputs" ]; then
-            find android/app/build/outputs -type f -name "*.apk"
+          echo "=== Main app build directory ==="
+          if [ -d "android/app/build/outputs/apk" ]; then
+            echo "Found APK output directory!"
+            find android/app/build/outputs/apk -name "*.apk" -exec ls -lh {} \;
           else
-            echo "No outputs directory found"
-            ls -la android/app/build/ || echo "No build directory"
+            echo "No APK output directory found. Checking build structure:"
+            ls -la android/app/build/ 2>/dev/null || echo "No app build directory"
+            
+            # Check if any build happened
+            echo "=== Checking if any builds occurred ==="
+            find android -name "build" -type d
           fi
     artifacts:
       - KegBatchScanner/android/app/build/outputs/**/*.apk
