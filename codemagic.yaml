@@ -39,28 +39,54 @@ workflows:
       - name: Set up local.properties
         script: |
           echo "sdk.dir=$ANDROID_SDK_ROOT" > "$CM_BUILD_DIR/android/local.properties"
-      - name: List available tasks
+      - name: List available gradle tasks
         script: |
           cd android
+          echo "=== Available assemble tasks ==="
           ./gradlew tasks --all | grep -i assemble
-      - name: Build Android APK with MLKit variant
+          echo "=== Available build variants ==="
+          ./gradlew tasks | grep -E "(assemble|build)"
+      - name: Try building Android APK
         script: |
           cd android
-          ./gradlew assembleMlkitRelease
+          echo "=== Attempting MLKit Release build ==="
+          if ./gradlew assembleMlkitRelease --stacktrace; then
+            echo "✅ MLKit Release build successful"
+          else
+            echo "❌ MLKit Release build failed, trying alternatives..."
+            
+            echo "=== Attempting General Release build ==="
+            if ./gradlew assembleGeneralRelease --stacktrace; then
+              echo "✅ General Release build successful"
+            else
+              echo "❌ General Release build failed, trying standard release..."
+              
+              echo "=== Attempting standard Release build ==="
+              if ./gradlew assembleRelease --stacktrace; then
+                echo "✅ Standard Release build successful"
+              else
+                echo "❌ All build attempts failed"
+                exit 1
+              fi
+            fi
+          fi
       - name: Find generated APK files
         script: |
           echo "=== Looking for APK files ==="
-          find android/app/build/outputs -name "*.apk" -type f
-          echo "=== Directory structure ==="
-          ls -la android/app/build/outputs/
-          if [ -d "android/app/build/outputs/apk" ]; then
-            echo "=== APK directory contents ==="
-            find android/app/build/outputs/apk -type f
+          if [ -d "android/app/build/outputs" ]; then
+            find android/app/build/outputs -name "*.apk" -type f -exec ls -lh {} \;
+            echo "=== Directory structure ==="
+            find android/app/build/outputs -type d
+          else
+            echo "❌ Build outputs directory doesn't exist - build may have failed"
+            echo "=== Checking if android directory exists ==="
+            ls -la android/app/
+            if [ -d "android/app/build" ]; then
+              echo "=== Contents of build directory ==="
+              find android/app/build -name "*.apk" -o -name "*outputs*" -type d
+            fi
           fi
     artifacts:
-      - android/app/build/outputs/apk/**/*.apk
-      - android/app/build/outputs/apk/**/release/*.apk
-      - android/app/build/outputs/apk/mlkit/release/*.apk
       - android/app/build/outputs/**/*.apk
     publishing:
       email:
